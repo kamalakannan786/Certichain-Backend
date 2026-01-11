@@ -14,6 +14,11 @@ const authRoutes = require('./routes/auth.routes');
 const certificateRoutes = require('./routes/certificate.routes');
 const verifyRoutes = require('./routes/verify.routes');
 
+const allowedOrigins = [
+  'https://certichain-frontend-pearl.vercel.app/',
+  'http://localhost:3000'
+];
+
 class App {
   constructor() {
     this.app = express();
@@ -41,17 +46,22 @@ class App {
       contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false
     }));
-    
-    // CORS with optimized settings
+
     this.app.use(cors({
-      origin: process.env.NODE_ENV === 'production' 
-        ? [process.env.CLIENT_URL, 'https://your-frontend-domain.vercel.app']
-        : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        return callback(new Error('CORS not allowed'), false);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
-      maxAge: 86400 // Cache preflight for 24 hours
     }));
+    this.app.options('*', cors());
 
     // Aggressive rate limiting for high-scale protection
     const authLimiter = rateLimit({
