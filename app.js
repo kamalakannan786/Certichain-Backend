@@ -14,11 +14,6 @@ const authRoutes = require('./routes/auth.routes');
 const certificateRoutes = require('./routes/certificate.routes');
 const verifyRoutes = require('./routes/verify.routes');
 
-const allowedOrigins = [
-  'https://certichain-frontend-pearl.vercel.app/',
-  'http://localhost:3000'
-];
-
 class App {
   constructor() {
     this.app = express();
@@ -41,54 +36,80 @@ class App {
   }
 
   initializeMiddlewares() {
+
+    this.app.use((req, res, next) => {
+      res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+
+      if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+      }
+      next();
+    });
+
     // Security headers
     this.app.use(helmet({ 
       contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false
     }));
-
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        return callback(null, false);
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-    }));
-
-    this.app.options('*', cors({
-      origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        return callback(null, false);
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-    }));
     
+    // CORS with optimized settings
+    this.app.use(cors({
+      origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        const allowedOrigins = process.env.NODE_ENV === 'production'
+            ? [
+              'https://certichain-frontend-pearl.vercel.app',
+              'https://certchain-backend-ypxo.onrender.com'
+            ]
+            : [
+              'http://localhost:3000',
+              'http://127.0.0.1:3000',
+              'http://localhost:5173',
+              'http://127.0.0.1:5173'
+            ];
+
+        // Check if origin is allowed
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          console.log('CORS blocked origin:', origin);
+          // In production, strictly block; in development, allow with warning
+          callback(process.env.NODE_ENV === 'production' ? new Error('Not allowed by CORS') : null, true);
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Requested-With'],
+      exposedHeaders: ['X-Request-ID'],
+      maxAge: 86400,
+      preflightContinue: false,
+      optionsSuccessStatus: 204
+    }));
+
+    this.app.options('*', cors());
 
     // Aggressive rate limiting for high-scale protection
     const authLimiter = rateLimit({
       windowMs: 15 * 60 * 1000,
-      max: 5,
+      max: 100, // Increase from 5 to 100 for development
       message: { success: false, message: 'Too many authentication attempts' },
       standardHeaders: true,
       legacyHeaders: false,
-      skip: (req) =>
-        req.method === 'OPTIONS' || process.env.NODE_ENV === 'development'
+      skip: (req) => process.env.NODE_ENV === 'development' // Skip in dev
     });
 
     const generalLimiter = rateLimit({
-      windowMs: 1 * 60 * 1000,
-      max: 100,
+      windowMs: 1 * 60 * 1000, // 1 minute
+      max: 100, // 100 requests per minute
       message: { success: false, message: 'Rate limit exceeded' },
       standardHeaders: true,
       legacyHeaders: false,
-      skip: (req) =>
-        req.method === 'OPTIONS' || process.env.NODE_ENV === 'development'
+      skip: (req) => process.env.NODE_ENV === 'development'
     });
 
     // Apply rate limiting
