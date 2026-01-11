@@ -50,36 +50,45 @@ class App {
     this.app.use(cors({
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-
-        return callback(new Error('CORS not allowed'), false);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(null, false);
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
     }));
-    this.app.options('*', cors());
+
+    this.app.options('*', cors({
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(null, false);
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    }));
+    
 
     // Aggressive rate limiting for high-scale protection
     const authLimiter = rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 5, // 5 attempts per window for auth
+      windowMs: 15 * 60 * 1000,
+      max: 5,
       message: { success: false, message: 'Too many authentication attempts' },
       standardHeaders: true,
       legacyHeaders: false,
-      skip: (req) => process.env.NODE_ENV === 'development'
+      skip: (req) =>
+        req.method === 'OPTIONS' || process.env.NODE_ENV === 'development'
     });
 
     const generalLimiter = rateLimit({
-      windowMs: 1 * 60 * 1000, // 1 minute
-      max: 100, // 100 requests per minute
+      windowMs: 1 * 60 * 1000,
+      max: 100,
       message: { success: false, message: 'Rate limit exceeded' },
       standardHeaders: true,
       legacyHeaders: false,
-      skip: (req) => process.env.NODE_ENV === 'development'
+      skip: (req) =>
+        req.method === 'OPTIONS' || process.env.NODE_ENV === 'development'
     });
 
     // Apply rate limiting
